@@ -12,7 +12,7 @@ def resize(image, size):
     return image
 
 class JBLDataset(Dataset):
-    def __init__(self,cont_img_path,style_img_path,img_size):
+    def __init__(self,cont_img_path,style_img_path,img_size, one_by_one=False):
         self.cont_img_path = cont_img_path
         self.style_img_path = style_img_path
         self.img_size = img_size
@@ -22,13 +22,17 @@ class JBLDataset(Dataset):
             transforms.Resize((self.img_size,self.img_size), Image.BICUBIC),
             transforms.ToTensor()
         ])
+        self.one_by_one = one_by_one
 
     def __len__(self):
         return len(self.cont_img_files)
 
     def __getitem__(self,idx):
         cont_img = Image.open(self.cont_img_files[idx]).convert('RGB')
-        style_idx = random.randint(0,len(self.style_img_files) - 1)
+        if self.one_by_one:
+            style_idx = idx
+        else:
+            style_idx = random.randint(0,len(self.style_img_files) - 1)
         style_img = Image.open(self.style_img_files[style_idx]).convert('RGB')
         cont_img = self.transform(cont_img)
         style_img = self.transform(style_img)
