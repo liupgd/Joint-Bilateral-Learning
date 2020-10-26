@@ -122,7 +122,11 @@ if __name__ == "__main__":
     ckp_set = ModelCheckpoint(save_last=True)
     model = PLModel(args)
     # ckp_set = ModelCheckpoint(save_top_k=None, monitor=None)
-    trainer = pl.Trainer.from_argparse_args(args, checkpoint_callback=ckp_set, logger = logger)
+    trainer = pl.Trainer.from_argparse_args(args, 
+        checkpoint_callback=ckp_set, 
+        logger = logger,
+        distributed_backend = 'ddp',
+        )
     # trainer = pl.Trainer(logger,
     #     checkpoint_callback=ckp_set,
     #     gpus = [2,3, 4,5,6], 
