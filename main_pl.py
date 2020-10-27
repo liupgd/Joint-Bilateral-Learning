@@ -12,7 +12,6 @@ from pytorch_lightning.callbacks import ModelCheckpoint
 from model import *
 from datasets import *
 import VGG
-import os
 from argparse import ArgumentParser
 
 class PLModel(pl.LightningModule):
@@ -48,6 +47,8 @@ class PLModel(pl.LightningModule):
         parser.add_argument("--lr", type=float, default= 1e-4, help = "learning rate")
         parser.add_argument("--val_content", type=str, default="./images/content_test/")
         parser.add_argument("--val_style", type=str, default="./images/style_test/")
+        parser.add_argument("--log_training", type=bool, default=False)
+        parser.add_argument("--log_validation", type=bool, default=True)
         return parser
 
     def prepare_data(self):
@@ -92,24 +93,15 @@ class PLModel(pl.LightningModule):
         image_grid = torch.cat((cont, style, out), 1)
         self.logger.experiment.add_image(logname, image_grid, img_idx)
         # save_image(image_grid, output_file + 'output'+str(epoch)+'.jpg', normalize=False)
-
         model.train()
-        return
+        return image_grid
 
     def validation_step(self, batch, batch_idx):
         low_cont, cont_img, style_img, low_style = batch
-        # coeffs, output = self(low_cont, cont_img, style_img, low_style) 
-        # loss_c,loss_s  = self.net.loss(output,cont_img,style_img)
-        # loss_r = self.L_loss(coeffs)
-        # total_loss = self.args.lambda_c * loss_c + self.args.lambda_s * loss_s + self.args.lambda_r * loss_r
-        #if self.epoch_indx % 3 == 0:
-        if True:
+        if self.args.log_validation:
             batch = [cont_img,low_cont,style_img,low_style]
             self.sample_image(self.net, self.model, batch, "val",  self.epoch_indx)
             pass
-        # res = pl.EvalResult()
-        # res.log('val_loss', total_loss)
-        # return res
     
 
     def training_step(self, batch, batch_idx):
@@ -118,23 +110,19 @@ class PLModel(pl.LightningModule):
         loss_c,loss_s  = self.net.loss(output,cont_img,style_img)
         loss_r = self.L_loss(coeffs)
         total_loss = self.args.lambda_c * loss_c + self.args.lambda_s * loss_s + self.args.lambda_r * loss_r
-        res = pl.TrainResult(total_loss)
-        res.log("train_loss", total_loss)
-        sample_idx = batch_idx + self.epoch_indx * len(self.train_loader)
-        if sample_idx % 30 == 0:
-            batch = [cont_img,low_cont,style_img,low_style]
-            self.sample_image(self.net, self.model, batch,'train', batch_idx)
-            pass
-        return res
+        self.log("train_loss", total_loss)
+        if self.args.log_training:
+            sample_idx = batch_idx + self.epoch_indx * len(self.train_loader)
+            if sample_idx % 30 == 0:
+                batch = [cont_img,low_cont,style_img,low_style]
+                self.sample_image(self.net, self.model, batch,'train', sample_idx)
+        return total_loss
 
     def training_epoch_end(self, reslut_list):
         self.epoch_indx += 1
-        return reslut_list
-
     
     def configure_optimizers(self):
         return Adam(self.model.parameters(), lr=self.args.lr)
-    
 
 if __name__ == "__main__":
     # print("VISABLE", os.environ['CUDA_VISIBLE_DEVICES'])
@@ -145,9 +133,9 @@ if __name__ == "__main__":
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
     logger = TensorBoardLogger(args.logdir, args.logname, flush_secs=1)
-    ckp_set = ModelCheckpoint(save_last=True)
     model = PLModel(args)
-    # ckp_set = ModelCheckpoint(save_top_k=None, monitor=None)
+    # ckp_set = ModelCheckpoint(save_last=True)
+    ckp_set = ModelCheckpoint(save_top_k=None, monitor=None)
     trainer = pl.Trainer.from_argparse_args(args, 
         checkpoint_callback=ckp_set, 
         logger = logger,
