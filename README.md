@@ -11,6 +11,7 @@ This repository is an unofficial implementation in PyTorch for the paper:
 - Python 3.7.2
 - PyTorch 1.2
 - CUDA10.0 and cuDNN
+- pytorch-lightning(newest, 1.04rc1)
 
 
 
@@ -28,4 +29,9 @@ $ python main.py --cont_img_path <path/to/cont_img> --style_img_path <path/to/st
 $ python test.py --cont_img_path <path/to/single_cont_img> --style_img_path <path/to/single_style_img> --model_checkpoint <path/to/model checkpoint>
 ```
 
+### Use pytorch-lightning
+* Train
+```
+python main_pl.py --gpus=2,3,4,5 --batch_size=6 --num_workers=6 --vgg_ckp_file=<vgg checkpoint file> --content_path=<content images path> --style_path=<style images path> --val_content=<validation content images path> --val_style=<validation style images path>
+```
 

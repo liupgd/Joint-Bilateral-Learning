@@ -13,6 +13,7 @@ from model import *
 from datasets import *
 import VGG
 from argparse import ArgumentParser
+import os
 
 class PLModel(pl.LightningModule):
     def __init__(self, args = None):
@@ -135,7 +136,7 @@ if __name__ == "__main__":
     logger = TensorBoardLogger(args.logdir, args.logname, flush_secs=1)
     model = PLModel(args)
     # ckp_set = ModelCheckpoint(save_last=True)
-    ckp_set = ModelCheckpoint(save_top_k=None, monitor=None)
+    ckp_set = ModelCheckpoint(save_last=True, monitor="train_loss")
     trainer = pl.Trainer.from_argparse_args(args, 
         checkpoint_callback=ckp_set, 
         logger = logger,
@@ -143,4 +144,3 @@ if __name__ == "__main__":
         # gpus=[2,3,4,5,6]
         )
     trainer.fit(model)
-
