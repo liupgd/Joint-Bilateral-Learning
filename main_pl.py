@@ -4,7 +4,7 @@ from torch.optim import Adam
 import torchvision as T
 import torchvision.transforms as Transformer
 from torch.utils.data import DataLoader
-from torchvision.utils import make_grid
+from torchvision.utils import make_grid, save_image
 import pytorch_lightning as pl
 from pytorch_lightning.core.decorators import auto_move_data
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -15,8 +15,9 @@ import VGG
 from argparse import ArgumentParser
 import os
 
+
 class PLModel(pl.LightningModule):
-    def __init__(self, args = None):
+    def __init__(self, args = None, only_one_dataset = False):
         super(PLModel, self).__init__()
         if args is None:
             parser = ArgumentParser()
@@ -24,6 +25,7 @@ class PLModel(pl.LightningModule):
             self.args = parser.parse_args()
         else:
             self.args = args
+        self.only_one_dataset = only_one_dataset
         self.save_hyperparameters()
         self.model = Model()
         vgg = VGG.vgg
@@ -38,8 +40,8 @@ class PLModel(pl.LightningModule):
         parser = ArgumentParser(parents=[parser], add_help=False)
         parser.add_argument("--batch_size", type=int, default=4, help="batch size")
         parser.add_argument("--vgg_ckp_file", type=str, default="./checkpoints/vgg_normalised.pth")
-        parser.add_argument("--content_path", type=str, default="/mnt/DataDisk/public/dataset/COCO/2017/images/test2017")
-        parser.add_argument("--style_path", type=str, default="/mnt/DataDisk/public/dataset/COCO/2017/images/val2017")
+        parser.add_argument("--content_path", type=str, default="/mnt/DataDisk/public/dataset/COCO/2017/images/train2017")
+        parser.add_argument("--style_path", type=str, default="/mnt/DataDisk/public/dataset/COCO/2017/images/train2017")
         parser.add_argument("--lambda_c", type=float, default=0.5, help="coeff for loss c")
         parser.add_argument("--lambda_s", type=float, default=1, help = "coeff for loss s")
         parser.add_argument("--lambda_r", type=float, default=0.15, help = "coeff for loss r")
@@ -48,18 +50,20 @@ class PLModel(pl.LightningModule):
         parser.add_argument("--lr", type=float, default= 1e-4, help = "learning rate")
         parser.add_argument("--val_content", type=str, default="./images/content_test/")
         parser.add_argument("--val_style", type=str, default="./images/style_test/")
-        parser.add_argument("--log_training", type=bool, default=False)
-        parser.add_argument("--log_validation", type=bool, default=True)
+        parser.add_argument("--log_training", type=int, default=False)
+        parser.add_argument("--log_validation", type=int, default=True)
+        parser.add_argument("--val_set_size", type=int, default=-1)
+        parser.add_argument("--train_set_size", type=int, default=-1)
         return parser
 
     def prepare_data(self):
         content_path = self.args.content_path
         style_path = self.args.style_path
-        self.train_dataset = JBLDataset(content_path, style_path, img_size=self.args.img_size)
+        self.train_dataset = JBLDataset(content_path, style_path, img_size=self.args.img_size, set_size=self.args.train_set_size)
         self.val_dataset = JBLDataset(self.args.val_content, self.args.val_style, 
-            img_size =self.args.img_size, one_by_one=True)
+            img_size =self.args.img_size, one_by_one=True, set_size = self.args.val_set_size)
         self.train_loader = DataLoader(self.train_dataset, num_workers=self.args.num_workers,
-            batch_size = self.args.batch_size)
+            batch_size = self.args.batch_size*2, shuffle=True)
         self.val_loader = DataLoader(self.val_dataset, batch_size=self.args.batch_size)
     
     def val_dataloader(self):
@@ -74,8 +78,9 @@ class PLModel(pl.LightningModule):
 
     @auto_move_data
     def forward(self, low_cont, cont_img, style_img, low_style):
-        cont_feat = self.net.encode_with_intermediate(low_cont)
-        style_feat = self.net.encode_with_intermediate(low_style)
+        # input image tensors
+        cont_feat = self.net.encode_with_intermediate(low_cont) # VGG 前4层的feature map
+        style_feat = self.net.encode_with_intermediate(low_style) 
         coeffs,output = self.model(cont_img,cont_feat,style_feat)
         return coeffs,output
 
@@ -98,15 +103,24 @@ class PLModel(pl.LightningModule):
         return image_grid
 
     def validation_step(self, batch, batch_idx):
-        low_cont, cont_img, style_img, low_style = batch
+        low_cont, cont_img, low_style, style_img = batch
         if self.args.log_validation:
             batch = [cont_img,low_cont,style_img,low_style]
             self.sample_image(self.net, self.model, batch, "val",  self.epoch_indx)
             pass
     
-
     def training_step(self, batch, batch_idx):
-        low_cont, cont_img, style_img, low_style = batch
+        if self.only_one_dataset:
+            low_conts, cont_imgs = batch
+            bs = low_conts.shape[0]//2
+            low_cont = low_conts[:bs, :].contiguous()
+            cont_img = cont_imgs[:bs, :].contiguous()
+            low_style = low_conts[bs:bs*2, :].contiguous()
+            style_img = cont_imgs[bs:bs*2, :].contiguous()
+            del low_conts, cont_imgs
+        else:
+            low_cont, cont_img, low_style, style_img = batch
+        
         coeffs, output = self(low_cont, cont_img, style_img, low_style) 
         loss_c,loss_s  = self.net.loss(output,cont_img,style_img)
         loss_r = self.L_loss(coeffs)
@@ -130,17 +144,45 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--logdir", type=str, default="./log")
     parser.add_argument("--logname", type=str, default = "pl")
+    parser.add_argument("--test", type=int, default=False)
     parser = PLModel.add_model_args(parser)
     parser = pl.Trainer.add_argparse_args(parser)
     args = parser.parse_args()
-    logger = TensorBoardLogger(args.logdir, args.logname, flush_secs=1)
-    model = PLModel(args)
-    # ckp_set = ModelCheckpoint(save_last=True)
-    ckp_set = ModelCheckpoint(save_last=True, monitor="train_loss")
-    trainer = pl.Trainer.from_argparse_args(args, 
-        checkpoint_callback=ckp_set, 
-        logger = logger,
-        distributed_backend = 'ddp',
-        # gpus=[2,3,4,5,6]
-        )
-    trainer.fit(model)
+    if args.test:
+        logger = False
+        # model = PLModel(args) 
+        model = PLModel.load_from_checkpoint("./log/pl_modified/version_1/checkpoints/last.ckpt")
+        model.freeze()
+        model.to('cuda:4')
+        model.args = args
+        val_loader = model.val_dataloader()
+        for i, batch in enumerate(val_loader):
+            print("run {}".format(i))
+            low_cont,cont_img,style_img,low_style = batch
+            coef, output = model(*batch)
+            output = output.cpu()
+            out = make_grid(output, normalize=True)
+            cont = make_grid(cont_img, normalize=True)
+            style = make_grid(style_img, normalize=True)
+            # diff = make_grid(output - cont_img, normalize=False)
+            # diff2 = torch.abs(diff).sum(dim=0).repeat(3, 1, 1)
+            # image =torch.cat((cont, style, out, diff, diff2), 1)
+            image =torch.cat((cont, style, out), 2)
+            save_image(image, "./output/{}.png".format(i))
+            print("saved {}".format(i))
+    else:
+        logger = TensorBoardLogger(args.logdir, args.logname, flush_secs=1)
+        if args.style_path == args.content_path:
+            only_one_dataset = True
+        else:
+            only_one_dataset = False
+
+        model = PLModel(args, only_one_dataset=only_one_dataset)
+        ckp_set = ModelCheckpoint(save_last=True, monitor="train_loss")
+        trainer = pl.Trainer.from_argparse_args(args, 
+            checkpoint_callback=ckp_set, 
+            logger = logger,
+            # distributed_backend = 'ddp',
+            # gpus=[2,3,4,5,6]
+            )
+        trainer.fit(model)

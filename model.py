@@ -20,7 +20,7 @@ def adaptive_instance_normalization(content_feat, style_feat):
     size = content_feat.size()
     style_mean, style_std = calc_mean_std(style_feat)
     content_mean, content_std = calc_mean_std(content_feat)
-
+    # normalized content feature map
     normalized_feat = (content_feat - content_mean.expand(
         size)) / content_std.expand(size)
     return normalized_feat * style_std.expand(size) + style_mean.expand(size)
@@ -45,8 +45,8 @@ class Biliteral_Grid(nn.Module):
         self.G4 = nn.Linear(256,128)
         self.G5 = nn.Linear(128,64)
         self.G6 = nn.Linear(64,64)
-        self.F = ConvLayer(128, 64, 1, 1)
-        self.T = ConvLayer(64, 96, 3, 1)
+        self.F = ConvLayer(128, 96, 1, 1)
+        # self.T = ConvLayer(64, 96, 3, 1)
         return
 
     def forward(self,c,s,feat):
@@ -72,8 +72,9 @@ class Biliteral_Grid(nn.Module):
 
         G = G.reshape(G.shape+(1,1)).expand(G.shape+(16,16))
         f = torch.cat((L,G),dim=1)
-        f = F.relu(self.F(f))
-        f = self.T(f)
+        # f = F.relu(self.F(f))
+        f = self.F(f) # fusion layer, no activation
+        # f = self.T(f)
         # this is grid
         return f
 #########################################################################################################
@@ -86,14 +87,17 @@ class Model(nn.Module):
         self.apply_coeffs = ApplyCoeffs()
 
     def forward(self,cont,cont_feat,style_feat):
+        # cont: content image
+        # cont_feat: content feature of VGG 4 layers
+        # style_fea: style feature of VGG 4 layers
         feat = []
-        for i in range(1,len(cont_feat)):
+        for i in range(1,len(cont_feat)): # Only 3 feature ?
             feat.append(adaptive_instance_normalization(cont_feat[i],style_feat[i]))
 
         coeffs_out = self.Biliteral_Grid(cont_feat[0],style_feat[0],feat)
         coeffs = coeffs_out.reshape(coeffs_out.shape[0],12,-1,coeffs_out.shape[-2],coeffs_out.shape[-1])
-        guide = self.guide(cont)
-        slice_coeffs = self.slice(coeffs, guide)
+        guide = self.guide(cont) # TODO: What is guide in paper? z? self.guide is the lookup table?
+        slice_coeffs = self.slice(coeffs, guide) # A?
         out = self.apply_coeffs(slice_coeffs, cont)
         # out -= out.min().detach()
         # out /= out.max().detach()
@@ -103,12 +107,12 @@ class ConvLayer(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size, stride):
         super(ConvLayer, self).__init__()
         reflection_padding = kernel_size // 2 # same dimension after padding
-        self.reflection_pad = nn.ReflectionPad2d(reflection_padding)
-        self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride) # remember this dimension
+        # self.reflection_pad = nn.ReflectionPad2d(reflection_padding)
+        self.conv2d = nn.Conv2d(in_channels, out_channels, kernel_size, stride, padding=reflection_padding) # remember this dimension
 
     def forward(self, x):
-        out = self.reflection_pad(x)
-        out = self.conv2d(out)
+        # out = self.reflection_pad(x)
+        out = self.conv2d(x)
         return out
 
 class SplattingBlock(nn.Module):

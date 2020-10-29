@@ -132,3 +132,4 @@ checkpoints/*
 *.ckpt
 log/*
 .vscode
+*.png
