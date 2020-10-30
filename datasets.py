@@ -12,8 +12,8 @@ def resize(image, size):
     return image
 
 class JBLDataset(Dataset):
-    def __init__(self,cont_img_path,style_img_path,img_size, one_by_one=False, set_size=-1):
-
+    def __init__(self,cont_img_path,style_img_path,img_size, one_by_one=False, set_size=-1, num_gpus=1):
+        self.num_gpus = num_gpus
         self.cont_img_path = cont_img_path
         self.style_img_path = style_img_path
         self.img_size = img_size
@@ -37,12 +37,22 @@ class JBLDataset(Dataset):
         else:
             return len(self.cont_img_files)
 
+    def get_img_with_rnd_security(self, idx:int, rng:tuple):
+        while True:
+            try:
+                img = Image.open(self.cont_img_files[idx]).convert('RGB')
+                break
+            except Exception as e:
+                print("Img read error: {}, file: {}".format(e, self.cont_img_files[idx]))
+                idx = random.randint(*rng)
+        return img
+
     def __getitem__(self,idx):
         if self.one_by_one:
-            idx = idx//2
+            idx = idx//self.num_gpus # TODO: set denominator according to GPUs
         if self.set_size > 0:
             idx = idx%len(self.cont_img_files)
-        cont_img = Image.open(self.cont_img_files[idx]).convert('RGB')
+        cont_img = self.get_img_with_rnd_security(idx, (0, len(self)-1))
         cont_img = self.transform(cont_img)
         low_cont = resize(cont_img,cont_img.shape[-1]//2)
         if not self.only_one_dataset:
@@ -50,16 +60,17 @@ class JBLDataset(Dataset):
                 style_idx = idx
             else:
                 style_idx = random.randint(0,len(self.style_img_files) - 1)
-            style_img = Image.open(self.style_img_files[style_idx]).convert('RGB')
+            style_img = self.get_img_with_rnd_security(style_idx, (0, len(self.style_img_files)-1))
             style_img = self.transform(style_img)
             low_style = resize(style_img, style_img.shape[-1]//2)
             return low_cont, cont_img, low_style, style_img
         else:
             return low_cont, cont_img
 
-    def list_files(self, in_path):
+    def list_files(self, in_path, ext_filter = ["jpg", "bmp", "jpeg", "png"]):
         files = []
         for (dirpath, dirnames, filenames) in os.walk(in_path):
+            valid_files = list(filter(lambda x:x.lower().split('.')[-1] in ext_filter, filenames))
             files.extend(filenames)
             break
         files = sorted([os.path.join(in_path, x) for x in files])

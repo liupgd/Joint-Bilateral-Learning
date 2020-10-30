@@ -54,6 +54,7 @@ class PLModel(pl.LightningModule):
         parser.add_argument("--log_validation", type=int, default=True)
         parser.add_argument("--val_set_size", type=int, default=-1)
         parser.add_argument("--train_set_size", type=int, default=-1)
+        parser.add_argument("--val_one_by_one", type=int, default=False)
         return parser
 
     def prepare_data(self):
@@ -61,7 +62,9 @@ class PLModel(pl.LightningModule):
         style_path = self.args.style_path
         self.train_dataset = JBLDataset(content_path, style_path, img_size=self.args.img_size, set_size=self.args.train_set_size)
         self.val_dataset = JBLDataset(self.args.val_content, self.args.val_style, 
-            img_size =self.args.img_size, one_by_one=True, set_size = self.args.val_set_size)
+            img_size =self.args.img_size, one_by_one=self.args.val_one_by_one, 
+            set_size = self.args.val_set_size,
+            num_gpus = len(self.args.gpus.split(',')))
         self.train_loader = DataLoader(self.train_dataset, num_workers=self.args.num_workers,
             batch_size = self.args.batch_size*2, shuffle=True)
         self.val_loader = DataLoader(self.val_dataset, batch_size=self.args.batch_size)
@@ -151,14 +154,14 @@ if __name__ == "__main__":
     if args.test:
         logger = False
         # model = PLModel(args) 
-        model = PLModel.load_from_checkpoint("./log/pl_modified/version_1/checkpoints/last.ckpt")
+        model = PLModel.load_from_checkpoint("./log/pl_coco_f/version_4/checkpoints/last.ckpt")
         model.freeze()
         model.to('cuda:4')
         model.args = args
         val_loader = model.val_dataloader()
         for i, batch in enumerate(val_loader):
             print("run {}".format(i))
-            low_cont,cont_img,style_img,low_style = batch
+            low_cont,cont_img,low_style,style_img = batch
             coef, output = model(*batch)
             output = output.cpu()
             out = make_grid(output, normalize=True)
@@ -167,8 +170,8 @@ if __name__ == "__main__":
             # diff = make_grid(output - cont_img, normalize=False)
             # diff2 = torch.abs(diff).sum(dim=0).repeat(3, 1, 1)
             # image =torch.cat((cont, style, out, diff, diff2), 1)
-            image =torch.cat((cont, style, out), 2)
-            save_image(image, "./output/{}.png".format(i))
+            image =torch.cat((cont, style, out), 1)
+            save_image(image, "./output/fusion_{}.png".format(i))
             print("saved {}".format(i))
     else:
         logger = TensorBoardLogger(args.logdir, args.logname, flush_secs=1)
