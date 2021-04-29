@@ -133,3 +133,6 @@ checkpoints/*
 log/*
 .vscode
 *.png
+*.jpeg
+*.JPG
+*.gif
