@@ -1,8 +1,8 @@
 # Joint Bilateral Learning
-[Github link](https://github.com/mousecpn/Joint-Bilateral-Learning)  
-This repository is an unofficial implementation in PyTorch for the paper:
 
-[Joint Bilateral Learning for Real-time Universal Photorealistic Style Transfer](https://arxiv.org/abs/2004.10955)
+This repository is an unofficial implementation in PyTorch for the paper: "Joint Bilateral Learning for Real-time Universal Photorealistic Style Transfer" (ECCV2020)
+
+[[paper]](https://arxiv.org/abs/2004.10955)
 
 
 
