@@ -45,7 +45,10 @@ class Biliteral_Grid(nn.Module):
         self.G4 = nn.Linear(256,128)
         self.G5 = nn.Linear(128,64)
         self.G6 = nn.Linear(64,64)
-        self.F = ConvLayer(128, 96, 1, 1)
+        self.F = nn.Sequential(ConvLayer(128, 96, 1, 1), ConvLayer(96, 96, 1, 1))
+        # self.F = ConvLayer(128, 96, 1, 1)
+        # self.FM = nn.Parameter(torch.randn(1, 96, 128, 16, 16))
+        # self.Fb = nn.Parameter(torch.randn(1, 96, 16, 16))
         # self.T = ConvLayer(64, 96, 3, 1)
         return
 
@@ -71,9 +74,11 @@ class Biliteral_Grid(nn.Module):
         G = F.relu(self.G6(G))
 
         G = G.reshape(G.shape+(1,1)).expand(G.shape+(16,16))
-        f = torch.cat((L,G),dim=1)
+        f = torch.cat((L,G),dim=1) # N x 128 x 16 x 16
         # f = F.relu(self.F(f))
         f = self.F(f) # fusion layer, no activation
+        # f = self.FM*f.unsqueeze(1)
+        # f = torch.sum(f, dim=2) + self.Fb
         # f = self.T(f)
         # this is grid
         return f

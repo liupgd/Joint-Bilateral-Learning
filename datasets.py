@@ -37,10 +37,10 @@ class JBLDataset(Dataset):
         else:
             return len(self.cont_img_files)
 
-    def get_img_with_rnd_security(self, idx:int, rng:tuple):
+    def get_img_with_rnd_security(self, file_list:list, idx:int, rng:tuple):
         while True:
             try:
-                img = Image.open(self.cont_img_files[idx]).convert('RGB')
+                img = Image.open(file_list[idx]).convert('RGB')
                 break
             except Exception as e:
                 print("Img read error: {}, file: {}".format(e, self.cont_img_files[idx]))
@@ -52,7 +52,7 @@ class JBLDataset(Dataset):
             idx = idx//self.num_gpus # TODO: set denominator according to GPUs
         if self.set_size > 0:
             idx = idx%len(self.cont_img_files)
-        cont_img = self.get_img_with_rnd_security(idx, (0, len(self)-1))
+        cont_img = self.get_img_with_rnd_security(self.cont_img_files, idx, (0, len(self)-1))
         cont_img = self.transform(cont_img)
         low_cont = resize(cont_img,cont_img.shape[-1]//2)
         if not self.only_one_dataset:
@@ -60,7 +60,7 @@ class JBLDataset(Dataset):
                 style_idx = idx
             else:
                 style_idx = random.randint(0,len(self.style_img_files) - 1)
-            style_img = self.get_img_with_rnd_security(style_idx, (0, len(self.style_img_files)-1))
+            style_img = self.get_img_with_rnd_security(self.style_img_files, style_idx, (0, len(self.style_img_files)-1))
             style_img = self.transform(style_img)
             low_style = resize(style_img, style_img.shape[-1]//2)
             return low_cont, cont_img, low_style, style_img
